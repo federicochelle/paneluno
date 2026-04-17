@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
+import logoNegro from '../assets/logonegro.png'
 
 function Login() {
   const navigate = useNavigate()
@@ -22,9 +23,7 @@ function Login() {
     event.preventDefault()
 
     if (!isSupabaseConfigured || !supabase) {
-      setError(
-        'Supabase todavía no está configurado. Agregá las variables de entorno requeridas para habilitar el inicio de sesión.',
-      )
+      setError('El acceso no está disponible en este momento. Intentá nuevamente más tarde.')
       return
     }
 
@@ -47,60 +46,56 @@ function Login() {
 
   return (
     <div className="auth-page">
-      <section className="auth-card">
-        <div className="auth-card__intro">
-          <span className="auth-card__eyebrow">Acceso administrador</span>
-          <h1>Iniciar sesión en Unomotors Admin</h1>
-          <p>
-            Ingresá con tus credenciales de administrador para entrar al panel
-            y gestionar el catálogo de vehículos desde una misma base operativa.
-          </p>
+      <section className="auth-card auth-card--split">
+        <div className="auth-brand-panel" aria-hidden="true">
+          <div className="auth-brand-panel__glow auth-brand-panel__glow--top" />
+          <div className="auth-brand-panel__glow auth-brand-panel__glow--bottom" />
+          <div className="auth-brand-panel__content">
+            <img className="auth-brand-panel__logo" src={logoNegro} alt="UnoMotors" />
+            <p className="auth-brand-panel__support">Panel de gestión</p>
+          </div>
         </div>
 
-        <form className="auth-card__form" onSubmit={handleSubmit}>
-          <label className="field-shell">
-            <span>Email</span>
-            <input
-              className="auth-input"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="admin@unomotors.com"
-              autoComplete="email"
-              required
-            />
-          </label>
+        <div className="auth-form-panel">
+          <div className="auth-form-panel__header">
+            <span className="auth-card__eyebrow">Acceso administrador</span>
+            <h1>Ingresar al panel</h1>
+          </div>
 
-          <label className="field-shell">
-            <span>Contraseña</span>
-            <input
-              className="auth-input"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Ingresá tu contraseña"
-              autoComplete="current-password"
-              required
-            />
-          </label>
+          <form className="auth-card__form" onSubmit={handleSubmit}>
+            <label className="field-shell field-shell--auth">
+              <span>Email</span>
+              <input
+                className="auth-input"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="admin@unomotors.com"
+                autoComplete="email"
+                required
+              />
+            </label>
 
-          {error ? <p className="auth-message auth-message--error">{error}</p> : null}
+            <label className="field-shell field-shell--auth">
+              <span>Contraseña</span>
+              <input
+                className="auth-input"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Ingresá tu contraseña"
+                autoComplete="current-password"
+                required
+              />
+            </label>
 
-          {!isSupabaseConfigured ? (
-            <p className="auth-message">
-              Falta configurar Supabase. Definí `VITE_SUPABASE_URL` y
-              `VITE_SUPABASE_ANON_KEY` para habilitar la autenticación.
-            </p>
-          ) : null}
+            {error ? <p className="auth-message auth-message--error">{error}</p> : null}
 
-          <button className="button-primary auth-submit" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Iniciando sesión...' : 'Entrar al panel'}
-          </button>
-
-          <p className="auth-card__hint">
-            El acceso del panel usa Supabase Auth con credenciales reales de administrador.
-          </p>
-        </form>
+            <button className="button-primary auth-submit" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Iniciando sesión...' : 'Entrar al panel'}
+            </button>
+          </form>
+        </div>
       </section>
     </div>
   )

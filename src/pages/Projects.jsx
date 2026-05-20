@@ -6,6 +6,7 @@ import {
   deleteVehicle,
   readVehicles,
   toggleVehicleArchived,
+  updateVehicleOrder,
 } from '../lib/projects'
 
 function Projects() {
@@ -147,6 +148,49 @@ function Projects() {
         deleteError instanceof Error
           ? deleteError.message
           : 'No se pudo eliminar el vehículo.',
+      )
+    } finally {
+      setActionLoadingId('')
+      setActionType('')
+    }
+  }
+
+  async function handleUpdateVehicleOrder(vehicleId, orden) {
+    const currentVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId)
+
+    if (!currentVehicle) {
+      return
+    }
+
+    const normalizedOrder =
+      orden === '' || orden === null || orden === undefined ? 99 : Number(orden)
+
+    if (
+      !Number.isInteger(normalizedOrder) ||
+      normalizedOrder < 0 ||
+      normalizedOrder === currentVehicle.orden
+    ) {
+      return
+    }
+
+    setActionLoadingId(vehicleId)
+    setActionType('order')
+    setActionError('')
+    setActionSuccess('')
+
+    try {
+      const updatedVehicle = await updateVehicleOrder(vehicleId, normalizedOrder)
+      setVehicles((currentVehicles) =>
+        currentVehicles.map((vehicle) =>
+          vehicle.id === vehicleId ? updatedVehicle : vehicle,
+        ),
+      )
+      setActionSuccess(`Orden de "${currentVehicle.title}" actualizado a ${updatedVehicle.orden}.`)
+    } catch (updateError) {
+      setActionError(
+        updateError instanceof Error
+          ? updateError.message
+          : 'No se pudo actualizar el orden del vehículo.',
       )
     } finally {
       setActionLoadingId('')
@@ -298,6 +342,7 @@ function Projects() {
             onClearFilters={handleClearFilters}
             onArchive={handleArchiveVehicle}
             onDelete={handleDeleteVehicle}
+            onOrderChange={handleUpdateVehicleOrder}
             actionLoadingId={actionLoadingId}
             actionType={actionType}
           />

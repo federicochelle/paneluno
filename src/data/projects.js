@@ -1,3 +1,5 @@
+import { defaultVehicleValues } from '../lib/vehicleModel'
+
 export const financingLogoOptions = [
   'santander',
   'cash',
@@ -5,34 +7,4 @@ export const financingLogoOptions = [
   'unomotors',
 ]
 
-export const defaultVehicleValues = {
-  slug: '',
-  tipo_vehiculo: '',
-  marca: '',
-  modelo: '',
-  version: '',
-  anio: '',
-  precio: '',
-  moneda: 'USD',
-  subtitulo: '',
-  kilometros: '',
-  combustible: '',
-  transmision: '',
-  motor: '',
-  color: '',
-  telefono: '',
-  ubicacion: '',
-  imagen_principal_src: '',
-  imagen_principal_alt: '',
-  galeria: [],
-  financiacion: {
-    mostrar: false,
-    logos: [],
-  },
-  descripcion_parrafos: '',
-  features: '',
-  publicado: false,
-  destacado: false,
-  archivado: false,
-  orden: '',
-}
+export { defaultVehicleValues }

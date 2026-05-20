@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
 
 function AdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -15,7 +14,16 @@ function AdminLayout() {
       />
 
       <div className="admin-main-shell">
-        <Topbar onOpenSidebar={() => setIsSidebarOpen(true)} />
+        <button
+          type="button"
+          className="admin-sidebar-toggle"
+          onClick={() => setIsSidebarOpen(true)}
+          aria-label="Abrir navegación"
+        >
+          <span />
+          <span />
+          <span />
+        </button>
         <main className="admin-content">
           <Outlet />
         </main>

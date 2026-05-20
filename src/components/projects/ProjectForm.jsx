@@ -2,8 +2,19 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { defaultVehicleValues, financingLogoOptions } from '../../data/projects'
 import { uploadVehicleCover, uploadVehicleGallery } from '../../lib/projects'
-import FormSection from './FormSection'
-import FieldGroup from './FieldGroup'
+import { syncLegacyVehicleFields } from '../../lib/vehicleMappers'
+import ProjectBasicFieldsSection from './ProjectBasicFieldsSection'
+import ProjectDescriptionSection from './ProjectDescriptionSection'
+import ProjectFinanceSection from './ProjectFinanceSection'
+import ProjectFormHeader from './ProjectFormHeader'
+import ProjectMediaSection from './ProjectMediaSection'
+import {
+  buildDraftSlug,
+  getCoverImageSource,
+  mergeGalleryItems,
+  removeGalleryItemAtIndex,
+  shiftFailedGalleryImagesMap,
+} from './projectForm.helpers'
 
 const financingLogoLabels = {
   santander: 'Santander',
@@ -16,22 +27,6 @@ const vehicleTypeOptions = [
   { value: 'auto', label: 'Auto' },
   { value: 'moto', label: 'Moto' },
 ]
-
-function buildDraftSlug(values) {
-  return [values.marca, values.modelo]
-    .map((value) =>
-      String(value || '')
-        .trim()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, ''),
-    )
-    .filter(Boolean)
-    .join('-')
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
 
 function ProjectForm({
   initialValues,
@@ -47,14 +42,12 @@ function ProjectForm({
     ...defaultVehicleValues,
     ...initialValues,
   })
-  const [selectedCoverFile, setSelectedCoverFile] = useState(null)
   const [coverUploadError, setCoverUploadError] = useState('')
-  const [coverUploadSuccess, setCoverUploadSuccess] = useState('')
   const [isUploadingCover, setIsUploadingCover] = useState(false)
-  const [selectedGalleryFiles, setSelectedGalleryFiles] = useState([])
   const [galleryUploadError, setGalleryUploadError] = useState('')
-  const [galleryUploadSuccess, setGalleryUploadSuccess] = useState('')
   const [isUploadingGallery, setIsUploadingGallery] = useState(false)
+  const [coverImageFailed, setCoverImageFailed] = useState(false)
+  const [failedGalleryImages, setFailedGalleryImages] = useState({})
 
   const formTitle = [formValues.marca, formValues.modelo, formValues.version]
     .filter(Boolean)
@@ -65,6 +58,7 @@ function ProjectForm({
   const isUploadingMedia = isUploadingCover || isUploadingGallery
   const isFormBusy = isSaving || isUploadingMedia
   const galleryItems = Array.isArray(formValues.galeria) ? formValues.galeria : []
+  const selectedFinancingLogos = formValues.financiacion?.logos || []
   const currentVehicleStatus = formValues.archivado
     ? 'archivado'
     : formValues.publicado
@@ -97,25 +91,6 @@ function ProjectForm({
       delete nextErrors[field]
       return nextErrors
     })
-  }
-
-  function normalizeGalleryItem(item, index) {
-    const source =
-      typeof item === 'string' ? item.trim() : String(item?.src || '').trim()
-
-    if (!source) {
-      return null
-    }
-
-    return {
-      src: source,
-      alt: typeof item === 'string' ? '' : item?.alt || '',
-      orden: index + 1,
-    }
-  }
-
-  function isValidGallerySource(source) {
-    return source.startsWith('http') || source.startsWith('/')
   }
 
   function toggleFinancingLogo(logo) {
@@ -162,107 +137,75 @@ function ProjectForm({
     onSubmit(formValues)
   }
 
-  function handleCoverFileChange(event) {
+  async function handleCoverFileChange(event) {
     const nextFile = event.target.files?.[0] || null
 
-    setSelectedCoverFile(nextFile)
     setCoverUploadError('')
-    setCoverUploadSuccess('')
-  }
-
-  async function handleCoverUpload() {
-    if (!selectedCoverFile || isUploadingCover || isSaving) {
+    clearFieldValidationError('imagen_principal')
+    if (!nextFile || isUploadingCover || isSaving) {
+      event.target.value = ''
       return
     }
 
     setIsUploadingCover(true)
-    setCoverUploadError('')
-    setCoverUploadSuccess('')
 
     try {
-      const { publicUrl } = await uploadVehicleCover(selectedCoverFile, {
+      const uploadResult = await uploadVehicleCover(nextFile, {
+        vehicleId: formValues.id,
+        slug: buildDraftSlug(formValues),
+      })
+
+      setFormValues((currentValues) =>
+        syncLegacyVehicleFields({
+          ...currentValues,
+          imagen_principal: {
+            path: uploadResult.path,
+            publicUrl: uploadResult.publicUrl,
+            src: uploadResult.publicUrl,
+            alt:
+              currentValues.imagen_principal?.alt ||
+              currentValues.imagen_principal_alt ||
+              '',
+          },
+        }),
+      )
+      setCoverImageFailed(false)
+      clearFieldValidationError('imagen_principal')
+    } catch (error) {
+      setCoverUploadError(
+        error instanceof Error ? error.message : 'No se pudo subir la portada.',
+      )
+    } finally {
+      event.target.value = ''
+      setIsUploadingCover(false)
+    }
+  }
+
+  async function handleGalleryFileChange(event) {
+    const nextFiles = Array.from(event.target.files || [])
+
+    setGalleryUploadError('')
+    clearFieldValidationError('galeria')
+    if (!nextFiles.length || isUploadingGallery || isSaving) {
+      event.target.value = ''
+      return
+    }
+
+    setIsUploadingGallery(true)
+
+    try {
+      const uploadedGalleryItems = await uploadVehicleGallery(nextFiles, {
         vehicleId: formValues.id,
         slug: buildDraftSlug(formValues),
       })
 
       setFormValues((currentValues) => ({
         ...currentValues,
-        imagen_principal_src: publicUrl,
+        galeria: mergeGalleryItems(currentValues.galeria, uploadedGalleryItems),
       }))
-      setSelectedCoverFile(null)
-      setCoverUploadSuccess('Portada subida correctamente. La URL pública ya quedó cargada.')
-    } catch (error) {
-      setCoverUploadError(
-        error instanceof Error ? error.message : 'No se pudo subir la portada.',
-      )
-    } finally {
-      setIsUploadingCover(false)
-    }
-  }
 
-  function handleGalleryFileChange(event) {
-    const nextFiles = Array.from(event.target.files || [])
-
-    setSelectedGalleryFiles(nextFiles)
-    setGalleryUploadError('')
-    setGalleryUploadSuccess('')
-    clearFieldValidationError('galeria')
-  }
-
-  async function handleGalleryUpload() {
-    if (!selectedGalleryFiles.length || isUploadingGallery || isSaving) {
-      return
-    }
-
-    setIsUploadingGallery(true)
-    setGalleryUploadError('')
-    setGalleryUploadSuccess('')
-
-    try {
-      const uploadedGalleryItems = await uploadVehicleGallery(selectedGalleryFiles, {
-        vehicleId: formValues.id,
-        slug: buildDraftSlug(formValues),
-      })
-
-      setFormValues((currentValues) => {
-        const currentGallery = Array.isArray(currentValues.galeria)
-          ? currentValues.galeria
-          : []
-
-        const nextGallery = [...currentGallery, ...uploadedGalleryItems]
-          .map(normalizeGalleryItem)
-          .filter(Boolean)
-          .map((item, index) => ({
-            ...item,
-            orden: index + 1,
-          }))
-
-        const cleanGallery = nextGallery
-          .filter((item) => item?.src && isValidGallerySource(item.src))
-          .map((item, index) => ({
-            ...item,
-            orden: index + 1,
-          }))
-
-        console.log('[galeria] final array', cleanGallery)
-        cleanGallery.forEach((item, index) => {
-          console.log('[galeria] item', index, item, {
-            src: item?.src,
-            alt: item?.alt,
-            orden: item?.orden,
-            keys: item ? Object.keys(item) : null,
-          })
-        })
-
-        return {
-          ...currentValues,
-          galeria: cleanGallery,
-        }
-      })
-
-      setSelectedGalleryFiles([])
+      setFailedGalleryImages({})
       clearFieldValidationError('galeria')
-      setGalleryUploadSuccess('Galería subida correctamente. Las imágenes quedaron agregadas al formulario.')
     } catch (error) {
       setGalleryUploadError(
         error instanceof Error
@@ -270,396 +213,97 @@ function ProjectForm({
           : 'No se pudieron subir las imágenes de la galería.',
       )
     } finally {
+      event.target.value = ''
       setIsUploadingGallery(false)
     }
   }
 
   function handleRemoveGalleryItem(indexToRemove) {
     setFormValues((currentValues) => {
-      const nextGallery = (Array.isArray(currentValues.galeria) ? currentValues.galeria : [])
-        .filter((_, index) => index !== indexToRemove)
-        .map(normalizeGalleryItem)
-        .filter(Boolean)
-        .map((item, index) => ({
-          ...item,
-          orden: index + 1,
-        }))
-
-      const cleanGallery = nextGallery
-        .filter((item) => item?.src && isValidGallerySource(item.src))
-        .map((item, index) => ({
-          ...item,
-          orden: index + 1,
-        }))
-
-      console.log('[galeria] final array', cleanGallery)
-      cleanGallery.forEach((item, index) => {
-        console.log('[galeria] item', index, item, {
-          src: item?.src,
-          alt: item?.alt,
-          orden: item?.orden,
-          keys: item ? Object.keys(item) : null,
-        })
-      })
-
       return {
         ...currentValues,
-        galeria: cleanGallery,
+        galeria: removeGalleryItemAtIndex(currentValues.galeria, indexToRemove),
       }
     })
+    setFailedGalleryImages((currentState) =>
+      shiftFailedGalleryImagesMap(currentState, indexToRemove),
+    )
     clearFieldValidationError('galeria')
+  }
+
+  const coverImageSource = getCoverImageSource(formValues)
+  const coverImageAlt =
+    formValues.imagen_principal?.alt ||
+    formValues.imagen_principal_alt ||
+    'Vista previa de portada'
+  const ordenChangeHandler = updateField('orden')
+  const descriptionChangeHandler = updateField('descripcion_parrafos')
+
+  function handleGalleryImageError(index) {
+    setFailedGalleryImages((currentState) => ({
+      ...currentState,
+      [index]: true,
+    }))
   }
 
   return (
     <div className="project-editor-layout">
       <div className="project-editor-main">
-        <section className="page-hero">
-          <div className="project-form-header">
-            <div className="project-summary-header">
-              <div className="project-summary-header__title">
-                <span className="section-tag">
-                  {mode === 'edit' ? 'Editar vehículo' : 'Nuevo vehículo'}
-                </span>
-                <h2>{safeFormTitle}</h2>
-              </div>
+        <ProjectFormHeader
+          mode={mode}
+          title={safeFormTitle}
+          currentVehicleStatus={currentVehicleStatus}
+          onStatusChange={setVehicleStatus}
+          orden={formValues.orden}
+          onOrdenChange={ordenChangeHandler}
+          ordenError={validationErrors.orden}
+          imageError={validationErrors.imagen_principal}
+          submitError={submitError}
+          submitSuccess={submitSuccess}
+        />
 
-              <div className="project-summary-header__meta">
-                <label className="project-header-field">
-                  <span>Estado</span>
-                  <div className="project-status-chips">
-                    <button
-                      type="button"
-                      className={`finance-chip${currentVehicleStatus === 'borrador' ? ' is-selected' : ''}`}
-                      onClick={() => setVehicleStatus('borrador')}
-                    >
-                      <span>Borrador</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`finance-chip${currentVehicleStatus === 'publicado' ? ' is-selected' : ''}`}
-                      onClick={() => setVehicleStatus('publicado')}
-                    >
-                      <span>Publicado</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`finance-chip${currentVehicleStatus === 'archivado' ? ' is-selected' : ''}`}
-                      onClick={() => setVehicleStatus('archivado')}
-                    >
-                      <span>Archivado</span>
-                    </button>
-                  </div>
-                </label>
+        <ProjectBasicFieldsSection
+          values={formValues}
+          errors={validationErrors}
+          onFieldChange={updateField}
+          onVehicleTypeChange={setVehicleType}
+          vehicleTypeOptions={vehicleTypeOptions}
+        />
 
-                <label className="project-header-field project-header-field--order">
-                  <span>Orden</span>
-                  <input
-                    className={`project-field__control project-header-order-input${
-                      validationErrors.orden ? ' project-field__control--error' : ''
-                    }`}
-                    type="number"
-                    value={formValues.orden}
-                    onChange={updateField('orden')}
-                    placeholder="Auto"
-                  />
-                  {validationErrors.orden ? (
-                    <small className="project-field__error">{validationErrors.orden}</small>
-                  ) : null}
-                </label>
-              </div>
-            </div>
-          </div>
+        <ProjectFinanceSection
+          selectedLogos={selectedFinancingLogos}
+          financingLogoOptions={financingLogoOptions}
+          financingLogoLabels={financingLogoLabels}
+          onToggleLogo={toggleFinancingLogo}
+          error={validationErrors.financiacion}
+        />
 
-          {submitError ? (
-            <p className="project-form-notice project-form-notice--error">
-              {submitError}
-            </p>
-          ) : null}
+        <ProjectMediaSection
+          mode={mode}
+          coverImageSource={coverImageSource}
+          coverImageAlt={coverImageAlt}
+          coverImageFailed={coverImageFailed}
+          onCoverImageError={() => setCoverImageFailed(true)}
+          onCoverFileChange={handleCoverFileChange}
+          isUploadingCover={isUploadingCover}
+          coverUploadError={coverUploadError}
+          coverValidationError={validationErrors.imagen_principal}
+          galleryItems={galleryItems}
+          failedGalleryImages={failedGalleryImages}
+          onGalleryImageError={handleGalleryImageError}
+          onGalleryFileChange={handleGalleryFileChange}
+          onRemoveGalleryItem={handleRemoveGalleryItem}
+          isUploadingGallery={isUploadingGallery}
+          galleryUploadError={galleryUploadError}
+          galleryValidationError={validationErrors.galeria}
+          isSaving={isSaving}
+          isFormBusy={isFormBusy}
+        />
 
-          {submitSuccess ? (
-            <p className="project-form-notice project-form-notice--success">
-              {submitSuccess}
-            </p>
-          ) : null}
-        </section>
-
-        <FormSection
-          className="main-data-section main-data-section--compact"
-          eyebrow="Datos principales"
-        >
-          <div className="project-form-grid">
-            <FieldGroup
-              label="Marca"
-              value={formValues.marca}
-              onChange={updateField('marca')}
-              placeholder="Toyota"
-              error={validationErrors.marca}
-            />
-            <FieldGroup
-              label="Modelo"
-              value={formValues.modelo}
-              onChange={updateField('modelo')}
-              placeholder="Corolla Cross"
-              error={validationErrors.modelo}
-            />
-            <FieldGroup
-              label="Versión"
-              value={formValues.version}
-              onChange={updateField('version')}
-              placeholder="Hybrid SEG"
-            />
-            <label className="project-field">
-              <span>Tipo de vehículo</span>
-              <div className="segmented-chip-group">
-                {vehicleTypeOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`segmented-chip${
-                      formValues.tipo_vehiculo === option.value ? ' is-selected' : ''
-                    }`}
-                    onClick={() => setVehicleType(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              {validationErrors.tipo_vehiculo ? (
-                <small className="project-field__error">
-                  {validationErrors.tipo_vehiculo}
-                </small>
-              ) : null}
-            </label>
-            <FieldGroup
-              label="Precio"
-              type="number"
-              step="0.01"
-              value={formValues.precio}
-              onChange={updateField('precio')}
-              placeholder="35990"
-              error={validationErrors.precio}
-            />
-            <FieldGroup
-              label="Moneda"
-              value={formValues.moneda}
-              onChange={updateField('moneda')}
-              placeholder="USD"
-            />
-            <FieldGroup
-              label="Año"
-              type="number"
-              value={formValues.anio}
-              onChange={updateField('anio')}
-              placeholder="2023"
-              error={validationErrors.anio}
-            />
-            <FieldGroup
-              label="Kilómetros"
-              type="number"
-              value={formValues.kilometros}
-              onChange={updateField('kilometros')}
-              placeholder="15000"
-              error={validationErrors.kilometros}
-            />
-            <FieldGroup
-              label="Combustible"
-              value={formValues.combustible}
-              onChange={updateField('combustible')}
-              placeholder="Nafta, Híbrido, Diesel..."
-            />
-            <FieldGroup
-              label="Transmisión"
-              value={formValues.transmision}
-              onChange={updateField('transmision')}
-              placeholder="Automática"
-            />
-            <FieldGroup
-              label="Motor"
-              value={formValues.motor}
-              onChange={updateField('motor')}
-              placeholder="2.0 Hybrid"
-            />
-            <FieldGroup
-              label="Color"
-              value={formValues.color}
-              onChange={updateField('color')}
-              placeholder="Blanco perlado"
-            />
-          </div>
-        </FormSection>
-
-        <FormSection
-          className="finance-section finance-section--compact"
-          eyebrow="Financiación"
-        >
-          <div className="project-form-grid">
-            <div className="project-form-grid__full">
-              <label className="project-field">
-                <div className="finance-chip-group">
-                  {financingLogoOptions.map((logo) => (
-                    <label
-                      key={logo}
-                      className={`finance-chip${
-                        formValues.financiacion?.logos?.includes(logo) ? ' is-selected' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={Boolean(formValues.financiacion?.logos?.includes(logo))}
-                        onChange={toggleFinancingLogo(logo)}
-                      />
-                      <span>{financingLogoLabels[logo] || logo}</span>
-                    </label>
-                  ))}
-                </div>
-                {validationErrors.financiacion ? (
-                  <small className="project-field__error">
-                    {validationErrors.financiacion}
-                  </small>
-                ) : null}
-              </label>
-            </div>
-          </div>
-        </FormSection>
-
-        <FormSection
-          className="media-section media-section--compact"
-          eyebrow="Imágenes"
-        >
-          <div className="project-form-grid">
-            <div className="project-form-grid__full">
-              <div className="cover-upload-card">
-                <div className="cover-upload-card__preview">
-                  {formValues.imagen_principal_src ? (
-                    <img
-                      src={formValues.imagen_principal_src}
-                      alt={formValues.imagen_principal_alt || 'Vista previa de portada'}
-                    />
-                  ) : (
-                    <span>Sin portada cargada</span>
-                  )}
-                </div>
-
-                <div className="cover-upload-card__meta">
-                  <span className="cover-upload-card__label">Portada</span>
-
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleCoverFileChange}
-                    disabled={isFormBusy}
-                  />
-
-                  <div className="cover-upload-card__actions">
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      onClick={handleCoverUpload}
-                      disabled={!selectedCoverFile || isUploadingCover || isSaving}
-                    >
-                      {isUploadingCover ? 'Subiendo portada...' : 'Subir portada'}
-                    </button>
-                  </div>
-
-                  {coverUploadError ? (
-                    <p className="project-form-notice project-form-notice--error">
-                      {coverUploadError}
-                    </p>
-                  ) : null}
-
-                  {coverUploadSuccess ? (
-                    <p className="project-form-notice project-form-notice--success">
-                      {coverUploadSuccess}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-            <div className="project-form-grid__full">
-              <div className="gallery-upload-card">
-                <div className="gallery-upload-card__header">
-                  <div>
-                    <span className="section-tag">Galería</span>
-                    <p className="gallery-upload-card__label">Imágenes</p>
-                  </div>
-                </div>
-
-                <div className="gallery-upload-card__controls">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleGalleryFileChange}
-                    disabled={isFormBusy}
-                  />
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={handleGalleryUpload}
-                    disabled={!selectedGalleryFiles.length || isUploadingGallery || isSaving}
-                  >
-                    {isUploadingGallery ? 'Subiendo galería...' : 'Subir galería'}
-                  </button>
-                </div>
-
-                {galleryUploadError ? (
-                  <p className="project-form-notice project-form-notice--error">
-                    {galleryUploadError}
-                  </p>
-                ) : null}
-
-                {galleryUploadSuccess ? (
-                  <p className="project-form-notice project-form-notice--success">
-                    {galleryUploadSuccess}
-                  </p>
-                ) : null}
-
-                {validationErrors.galeria ? (
-                  <p className="project-form-notice project-form-notice--error">
-                    {validationErrors.galeria}
-                  </p>
-                ) : null}
-
-                <div className="gallery-grid">
-                  {galleryItems.map((item, index) => (
-                    <div key={`${item.src}-${index}`} className="gallery-grid__item">
-                      <img
-                        src={item.src}
-                        alt={`Imagen de galería ${index + 1}`}
-                      />
-                      <button
-                        type="button"
-                        className="gallery-grid__remove"
-                        onClick={() => handleRemoveGalleryItem(index)}
-                        disabled={isUploadingGallery || isSaving}
-                        aria-label={`Quitar imagen ${index + 1}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </FormSection>
-
-        <FormSection
-          className="description-section description-section--compact"
-          eyebrow="Descripción"
-        >
-          <div className="project-form-grid">
-            <div className="project-form-grid__full">
-              <textarea
-                className="project-field__control description-textarea"
-                value={formValues.descripcion_parrafos}
-                onChange={updateField('descripcion_parrafos')}
-                placeholder="Un párrafo por línea"
-                rows={6}
-              />
-            </div>
-          </div>
-        </FormSection>
+        <ProjectDescriptionSection
+          value={formValues.descripcion_parrafos}
+          onChange={descriptionChangeHandler}
+        />
 
         <div className="project-form-footer">
           <button

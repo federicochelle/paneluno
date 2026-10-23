@@ -1,4 +1,4 @@
-import { defaultVehicleValues } from '../lib/vehicleModel'
+import { defaultVehicleValues } from '../lib/vehicleModel.js'
 
 export const financingLogoOptions = [
   'santander',

@@ -1,6 +1,6 @@
-import { financingLogoOptions } from '../data/projects'
-import { syncLegacyVehicleFields } from './vehicleMappers'
-import { VEHICLE_STATUS } from './vehicleModel'
+import { financingLogoOptions } from '../data/projects.js'
+import { syncLegacyVehicleFields } from './vehicleMappers.js'
+import { VEHICLE_STATUS } from './vehicleModel.js'
 
 const ALLOWED_CURRENCIES = ['USD', 'UYU']
 

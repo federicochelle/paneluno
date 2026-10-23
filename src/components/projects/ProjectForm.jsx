@@ -9,7 +9,6 @@ import ProjectFinanceSection from './ProjectFinanceSection'
 import ProjectFormHeader from './ProjectFormHeader'
 import ProjectMediaSection from './ProjectMediaSection'
 import {
-  buildDraftSlug,
   getCoverImageSource,
   mergeGalleryItems,
   removeGalleryItemAtIndex,
@@ -152,7 +151,6 @@ function ProjectForm({
     try {
       const uploadResult = await uploadVehicleCover(nextFile, {
         vehicleId: formValues.id,
-        slug: buildDraftSlug(formValues),
       })
 
       setFormValues((currentValues) =>
@@ -196,7 +194,6 @@ function ProjectForm({
     try {
       const uploadedGalleryItems = await uploadVehicleGallery(nextFiles, {
         vehicleId: formValues.id,
-        slug: buildDraftSlug(formValues),
       })
 
       setFormValues((currentValues) => ({

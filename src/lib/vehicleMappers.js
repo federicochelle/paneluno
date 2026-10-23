@@ -1,5 +1,5 @@
-import { financingLogoOptions } from '../data/projects'
-import { createDefaultVehicle, VEHICLE_STATUS } from './vehicleModel'
+import { financingLogoOptions } from '../data/projects.js'
+import { createDefaultVehicle, VEHICLE_STATUS } from './vehicleModel.js'
 
 const DEFAULT_VEHICLE_ORDER = 99
 
